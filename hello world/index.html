@@ -16,8 +16,8 @@
       }
 
       #map {
-        width: 50vw;
-        height: 50vh;
+        width: 100vw;
+        height: 100vh;
       }
     </style>
   </head>
@@ -117,8 +117,9 @@
       console.log(statesData["California"]);
       console.log(statesData["Texas"]);
 
-      const displayMapTile = false;
+      const displayMapTile = true;
       const displayStatesGeoJson = true;
+      const displayMetroCircles = true;
 
       const blankStyle = {
         version: 8,
@@ -135,6 +136,43 @@
             ],
         zoom: 3,
       });
+
+      // Static metro area data for circles
+      const metroCircles = [
+        { name: "New York Metro", coords: [-74.006, 40.7128], jobs: 480 },
+        { name: "Los Angeles Metro", coords: [-118.2437, 34.0522], jobs: 350 },
+        { name: "Chicago Metro", coords: [-87.6298, 41.8781], jobs: 410 },
+        { name: "Dallas Metro", coords: [-96.797, 32.7767], jobs: 220 },
+        { name: "Houston Metro", coords: [-95.3698, 29.7604], jobs: 300 },
+        { name: "Miami Metro", coords: [-80.1918, 25.7617], jobs: 120 },
+        { name: "Atlanta Metro", coords: [-84.388, 33.749], jobs: 60 },
+        { name: "San Francisco Metro", coords: [-122.4194, 37.7749], jobs: 500 },
+        { name: "Seattle Metro", coords: [-122.3321, 47.6062], jobs: 270 },
+        { name: "Denver Metro", coords: [-104.9903, 39.7392], jobs: 10 },
+      ];
+
+      // Helper to scale job count to radius (10-50px)
+      function getCircleRadius(jobs) {
+        const minJobs = 0, maxJobs = 500, minR = 10, maxR = 50;
+        return minR + ((jobs - minJobs) / (maxJobs - minJobs)) * (maxR - minR);
+      }
+
+      // Convert to GeoJSON
+      const metroGeoJson = {
+        type: "FeatureCollection",
+        features: metroCircles.map((m) => ({
+          type: "Feature",
+          properties: {
+            name: m.name,
+            jobs: m.jobs,
+            radius: getCircleRadius(m.jobs),
+          },
+          geometry: {
+            type: "Point",
+            coordinates: m.coords,
+          },
+        })),
+      };
 
       map.on("load", function () {
         if (displayStatesGeoJson) {
@@ -164,7 +202,7 @@
                 paint: {
                   // Use the fillColor property from each feature
                   "fill-color": ["get", "fillColor"],
-                  "fill-opacity": 0.4,
+                  "fill-opacity": 0,
                 },
               });
 
@@ -180,6 +218,29 @@
               });
             });
         }
+
+          if (displayMetroCircles) {
+        // Add metro circles source and layer
+        map.addSource("metro-circles", {
+          type: "geojson",
+          data: metroGeoJson,
+        });
+
+        map.addLayer({
+          id: "metro-circles-layer",
+          type: "circle",
+          source: "metro-circles",
+          paint: {
+            "circle-radius": ["get", "radius"],
+            "circle-color": "#1976d2",
+            "circle-opacity": 0.6,
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#0d47a1",
+          },
+        });
+
+      }
+
       });
     </script>
   </body>
