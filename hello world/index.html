@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>MapLibre Example</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- MapLibre GL JS CSS -->
+    <script src="https://unpkg.com/maplibre-gl@^5.6.0/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@^5.6.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+      body,
+      html {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      #map {
+        width: 50vw;
+        height: 50vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script>
+      const stateNames = [
+        "West Virginia",
+        "Florida",
+        "Illinois",
+        "Minnesota",
+        "Maryland",
+        "Rhode Island",
+        "Idaho",
+        "New Hampshire",
+        "North Carolina",
+        "Vermont",
+        "Connecticut",
+        "Delaware",
+        "New Mexico",
+        "California",
+        "New Jersey",
+        "Wisconsin",
+        "Oregon",
+        "Nebraska",
+        "Pennsylvania",
+        "Washington",
+        "Louisiana",
+        "Georgia",
+        "Alabama",
+        "Utah",
+        "Ohio",
+        "Texas",
+        "Colorado",
+        "South Carolina",
+        "Oklahoma",
+        "Tennessee",
+        "Wyoming",
+        "Hawaii",
+        "North Dakota",
+        "Kentucky",
+        "United States Virgin Islands",
+        "Commonwealth of the Northern Mariana Islands",
+        "Guam",
+        "Maine",
+        "New York",
+        "Nevada",
+        "Alaska",
+        "American Samoa",
+        "Michigan",
+        "Arkansas",
+        "Mississippi",
+        "Missouri",
+        "Montana",
+        "Kansas",
+        "Indiana",
+        "Puerto Rico",
+        "South Dakota",
+        "Massachusetts",
+        "Virginia",
+        "District of Columbia",
+        "Iowa",
+        "Arizona",
+      ];
+
+      // Color levels for job numbers (light to dark green)
+      const jobNumberColors = [
+        "#b9f6ca", // tiny
+        "#69f0ae", // small
+        "#00e676", // medium
+        "#00c853", // big
+        "#006400", // bigger
+      ];
+
+      // Assign color based on job number
+      function getColorForJobNumber(jobNumber) {
+        if (jobNumber <= 100) return jobNumberColors[0];
+        if (jobNumber <= 200) return jobNumberColors[1];
+        if (jobNumber <= 300) return jobNumberColors[2];
+        if (jobNumber <= 400) return jobNumberColors[3];
+        return jobNumberColors[4];
+      }
+
+      // Generate the state object
+      const statesData = {};
+      stateNames.forEach((name) => {
+        const jobNumber = Math.floor(Math.random() * 501); // 0 to 500
+        statesData[name] = {
+          Label: name,
+          borderColor: "#000000",
+          fillColor: getColorForJobNumber(jobNumber),
+          jobNumber: jobNumber,
+        };
+      });
+
+      // Example: log a few states
+      console.log(statesData["California"]);
+      console.log(statesData["Texas"]);
+
+      const displayMapTile = false;
+      const displayStatesGeoJson = true;
+
+      const blankStyle = {
+        version: 8,
+        sources: {},
+        layers: [],
+      };
+
+      var map = new maplibregl.Map({
+        container: "map",
+        style: displayMapTile ? "https://tiles.openfreemap.org/styles/positron" : blankStyle,
+        center: [
+              -77.719519,
+              39.321314
+            ],
+        zoom: 3,
+      });
+
+      map.on("load", function () {
+        if (displayStatesGeoJson) {
+          fetch("statesGeo.json")
+            .then((response) => response.json())
+            .then((data) => {
+              // Iterate and add properties to each feature
+              data.features.forEach((feature) => {
+                const stateName = feature.properties.NAME;
+                const stateData = statesData[stateName];
+                if (stateData) {
+                  feature.properties.fillColor = stateData.fillColor;
+                  feature.properties.borderColor = stateData.borderColor;
+                  feature.properties.jobNumber = stateData.jobNumber;
+                }
+              });
+
+              map.addSource("states", {
+                type: "geojson",
+                data: data,
+              });
+
+              map.addLayer({
+                id: "states-fill",
+                type: "fill",
+                source: "states",
+                paint: {
+                  // Use the fillColor property from each feature
+                  "fill-color": ["get", "fillColor"],
+                  "fill-opacity": 0.4,
+                },
+              });
+
+              map.addLayer({
+                id: "states-outline",
+                type: "line",
+                source: "states",
+                paint: {
+                  // Use the borderColor property from each feature
+                  "line-color": ["get", "borderColor"],
+                  "line-width": 1,
+                },
+              });
+            });
+        }
+      });
+    </script>
+  </body>
+</html>
