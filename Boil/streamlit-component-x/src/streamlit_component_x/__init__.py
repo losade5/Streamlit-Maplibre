@@ -46,7 +46,7 @@ def main():
     #   "San Francisco Metro" - pans/zooms/locks to San Francisco Metro
     #   "Seattle Metro"     - pans/zooms/locks to Seattle Metro
     #   "Denver Metro"      - pans/zooms/locks to Denver Metro
-    json_str = '{"view": "country"}'
+    json_str = '{"view": "New York Metro"}'
     value = streamlit_component_x(data=json_str)
     st.write(value)
 

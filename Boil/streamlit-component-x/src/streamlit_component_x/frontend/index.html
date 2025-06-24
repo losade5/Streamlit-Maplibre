@@ -15,15 +15,39 @@
 
   <style>
     #map {
-      width: 800px;
+      width: 700px;
       height: 800px;
+
+      box-sizing: border-box;
+    }
+
+    #debug-overlay {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.85);
+      color: #fff;
+      font-size: 20px;
+      padding: 18px 28px;
+      z-index: 1000;
+      max-width: 90vw;
+      word-break: break-all;
+      pointer-events: none;
+      border-radius: 10px;
+      text-align: center;
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
     }
   </style>
 </head>
 
 <body>
   <div id="map"></div>
+  <div id="debug-overlay" style="display: none;"></div>
   <script>
+    // Debug overlay visibility flag
+    const SHOW_DEBUG_OVERLAY = false; // Set to true to show debug overlay
+
     const stateNames = [
       "West Virginia",
       "Florida",
@@ -123,118 +147,156 @@
       layers: [],
     };
 
-    // Always start with the default style and center
-    var map = new maplibregl.Map({
-      container: "map",
-      style: "https://tiles.openfreemap.org/styles/positron",
-      center: [
-        -77.719519,
-        39.321314
-      ],
-      zoom: 3,
-    });
+    // --- Map creation logic ---
+    let map = null;
+    let currentStyleType = null; // 'blank' or 'tile'
 
-    // Static metro area data for circles
-    const metroCircles = [
-      { name: "New York Metro", coords: [-74.006, 40.7128], jobs: 480 },
-      { name: "Los Angeles Metro", coords: [-118.2437, 34.0522], jobs: 350 },
-      { name: "Chicago Metro", coords: [-87.6298, 41.8781], jobs: 410 },
-      { name: "Dallas Metro", coords: [-96.797, 32.7767], jobs: 220 },
-      { name: "Houston Metro", coords: [-95.3698, 29.7604], jobs: 300 },
-      { name: "Miami Metro", coords: [-80.1918, 25.7617], jobs: 120 },
-      { name: "Atlanta Metro", coords: [-84.388, 33.749], jobs: 60 },
-      { name: "San Francisco Metro", coords: [-122.4194, 37.7749], jobs: 500 },
-      { name: "Seattle Metro", coords: [-122.3321, 47.6062], jobs: 270 },
-      { name: "Denver Metro", coords: [-104.9903, 39.7392], jobs: 10 },
-    ];
+    function buildMap(styleType, center, zoom, fillOpacity, showMetroCircles) {
+      // Remove old map if exists
+      if (map) {
+        map.remove();
+        document.getElementById('map').innerHTML = '';
+      }
+      const style = styleType === 'blank' ? blankStyle : "https://tiles.openfreemap.org/styles/positron";
+      map = new maplibregl.Map({
+        container: "map",
+        style: style,
+        center: center,
+        zoom: zoom,
+      });
+      map.on("load", function () {
+        // Add states
+        fetch("statesGeo.json")
+          .then((response) => response.json())
+          .then((data) => {
+            data.features.forEach((feature) => {
+              const stateName = feature.properties.NAME;
+              const stateData = statesData[stateName];
+              if (stateData) {
+                feature.properties.fillColor = stateData.fillColor;
+                feature.properties.borderColor = stateData.borderColor;
+                feature.properties.jobNumber = stateData.jobNumber;
+              }
+            });
+            map.addSource("states", {
+              type: "geojson",
+              data: data,
+            });
+            map.addLayer({
+              id: "states-fill",
+              type: "fill",
+              source: "states",
+              paint: {
+                "fill-color": ["get", "fillColor"],
+                "fill-opacity": fillOpacity,
+              },
+            });
+            map.addLayer({
+              id: "states-outline",
+              type: "line",
+              source: "states",
+              paint: {
+                "line-color": ["get", "borderColor"],
+                "line-width": 1,
+                "line-opacity": 1,
+              },
+            });
+          });
 
-    // Helper to scale job count to radius (10-50px)
-    function getCircleRadius(jobs) {
-      const minJobs = 0, maxJobs = 500, minR = 10, maxR = 50;
-      return minR + ((jobs - minJobs) / (maxJobs - minJobs)) * (maxR - minR);
+        // Helper to scale job count to radius (10-50px)
+        function getCircleRadius(jobs) {
+          const minJobs = 0, maxJobs = 500, minR = 10, maxR = 50;
+          return minR + ((jobs - minJobs) / (maxJobs - minJobs)) * (maxR - minR);
+        }
+
+
+        const metroGeoJson = {
+          type: "FeatureCollection",
+          features: metroCircles.map((m) => ({
+            type: "Feature",
+            properties: {
+              name: m.name,
+              jobs: m.jobs,
+              radius: getCircleRadius(m.jobs),
+            },
+            geometry: {
+              type: "Point",
+              coordinates: m.coords,
+            },
+          })),
+        };
+
+
+
+        // Add metro circles
+        map.addSource("metro-circles", {
+          type: "geojson",
+          data: metroGeoJson,
+        });
+        map.addLayer({
+          id: "metro-circles-layer",
+          type: "circle",
+          source: "metro-circles",
+          paint: {
+            "circle-radius": ["get", "radius"],
+            "circle-color": "#1976d2",
+            "circle-opacity": 0.6,
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#0d47a1",
+          },
+          layout: {
+            "visibility": showMetroCircles ? "visible" : "none",
+          },
+        });
+        // Lock map interactions for all views
+        setMapLock(map, true);
+      });
     }
 
-    // Convert to GeoJSON
-    const metroGeoJson = {
-      type: "FeatureCollection",
-      features: metroCircles.map((m) => ({
-        type: "Feature",
-        properties: {
-          name: m.name,
-          jobs: m.jobs,
-          radius: getCircleRadius(m.jobs),
-        },
-        geometry: {
-          type: "Point",
-          coordinates: m.coords,
-        },
-      })),
-    };
-
-    map.on("load", function () {
-      // Always add statesGeoJson and metro circles, but control visibility in applyView
-      fetch("statesGeo.json")
-        .then((response) => response.json())
-        .then((data) => {
-          data.features.forEach((feature) => {
-            const stateName = feature.properties.NAME;
-            const stateData = statesData[stateName];
-            if (stateData) {
-              feature.properties.fillColor = stateData.fillColor;
-              feature.properties.borderColor = stateData.borderColor;
-              feature.properties.jobNumber = stateData.jobNumber;
-            }
-          });
-
-          map.addSource("states", {
-            type: "geojson",
-            data: data,
-          });
-
-          map.addLayer({
-            id: "states-fill",
-            type: "fill",
-            source: "states",
-            paint: {
-              "fill-color": ["get", "fillColor"],
-              "fill-opacity": 1, // Start visible, will be controlled by applyView
-            },
-          });
-
-          map.addLayer({
-            id: "states-outline",
-            type: "line",
-            source: "states",
-            paint: {
-              "line-color": ["get", "borderColor"],
-              "line-width": 1,
-              "line-opacity": 1, // Start visible, will be controlled by applyView
-            },
-          });
-        });
-
-      // Add metro circles source and layer
-      map.addSource("metro-circles", {
-        type: "geojson",
-        data: metroGeoJson,
-      });
-
-      map.addLayer({
-        id: "metro-circles-layer",
-        type: "circle",
-        source: "metro-circles",
-        paint: {
-          "circle-radius": ["get", "radius"],
-          "circle-color": "#1976d2",
-          "circle-opacity": 0.6,
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#0d47a1",
-        },
-        layout: {
-          "visibility": "visible", // Will be controlled by applyView
-        },
-      });
-    });
+    // --- View logic ---
+    function applyView(view) {
+      let fillOpacity, styleType, showMetroCircles, center, zoom;
+      if (view === "country") {
+        fillOpacity = 1;
+        styleType = 'blank';
+        showMetroCircles = false;
+        center = [-98, 39];
+        zoom = 3;
+      } else if (view === "country-metro") {
+        fillOpacity = 0;
+        styleType = 'tile';
+        showMetroCircles = true;
+        center = [-98, 39];
+        zoom = 3;
+      } else {
+        const metro = getMetroByName(view);
+        if (metro) {
+          fillOpacity = 0;
+          styleType = 'tile';
+          showMetroCircles = true;
+          center = metro.coords;
+          zoom = 9;
+        } else {
+          // fallback to country
+          fillOpacity = 1;
+          styleType = 'blank';
+          showMetroCircles = false;
+          center = [-98, 39];
+          zoom = 3;
+        }
+      }
+      if (currentStyleType !== styleType) {
+        currentStyleType = styleType;
+        buildMap(styleType, center, zoom, fillOpacity, showMetroCircles);
+      } else {
+        // Just update layers if style type didn't change
+        if (map) {
+          map.flyTo({ center: center, zoom: zoom });
+          if (map.getLayer("states-fill")) map.setPaintProperty("states-fill", "fill-opacity", fillOpacity);
+          if (map.getLayer("metro-circles-layer")) map.setLayoutProperty("metro-circles-layer", "visibility", showMetroCircles ? "visible" : "none");
+        }
+      }
+    }
 
     function setMapLock(map, locked) {
       if (locked) {
@@ -254,107 +316,58 @@
       }
     }
 
+    // Static metro area data for circles
+    const metroCircles = [
+      { name: "New York Metro", coords: [-74.006, 40.7128], jobs: 480 },
+      { name: "Los Angeles Metro", coords: [-118.2437, 34.0522], jobs: 350 },
+      { name: "Chicago Metro", coords: [-87.6298, 41.8781], jobs: 410 },
+      { name: "Dallas Metro", coords: [-96.797, 32.7767], jobs: 220 },
+      { name: "Houston Metro", coords: [-95.3698, 29.7604], jobs: 300 },
+      { name: "Miami Metro", coords: [-80.1918, 25.7617], jobs: 120 },
+      { name: "Atlanta Metro", coords: [-84.388, 33.749], jobs: 60 },
+      { name: "San Francisco Metro", coords: [-122.4194, 37.7749], jobs: 500 },
+      { name: "Seattle Metro", coords: [-122.3321, 47.6062], jobs: 270 },
+      { name: "Denver Metro", coords: [-104.9903, 39.7392], jobs: 10 },
+    ];
+
     function getMetroByName(name) {
       return metroCircles.find((m) => m.name === name);
-    }
-
-    // --- View logic ---
-    function applyView(view) {
-      // Defaults
-      let fillOpacity = 1;
-      let borderOpacity = 1;
-      let showMapTile = true;
-      let showMetroCircles = true;
-      let showStatesGeoJson = true;
-      let lockMap = false;
-      let center = [-77.719519, 39.321314];
-      let zoom = 3;
-
-      if (view === "country") {
-        fillOpacity = 1;
-        borderOpacity = 1;
-        showMapTile = true;
-        showMetroCircles = false;
-        showStatesGeoJson = true;
-        lockMap = false;
-        center = [-98, 39];
-        zoom = 3;
-      } else if (view === "country-metro") {
-        fillOpacity = 0;
-        borderOpacity = 0.5;
-        showMapTile = true;
-        showMetroCircles = true;
-        showStatesGeoJson = true;
-        lockMap = true;
-        center = [-98, 39];
-        zoom = 3;
-      } else {
-        const metro = getMetroByName(view);
-        if (metro) {
-          fillOpacity = 0;
-          borderOpacity = 0.5;
-          showMapTile = true;
-          showMetroCircles = true;
-          showStatesGeoJson = true;
-          lockMap = true;
-          center = metro.coords;
-          zoom = 9;
-        }
-      }
-
-      // Set map style if needed (blank style if showMapTile is false)
-      if (showMapTile) {
-        map.setStyle("https://tiles.openfreemap.org/styles/positron");
-      } else {
-        map.setStyle(blankStyle);
-      }
-
-      // Wait for style to load before setting layers
-      map.once("styledata", () => {
-        // Set fill opacity
-        if (map.getLayer("states-fill")) {
-          map.setPaintProperty("states-fill", "fill-opacity", fillOpacity);
-        }
-        // Set border opacity
-        if (map.getLayer("states-outline")) {
-          map.setPaintProperty("states-outline", "line-opacity", borderOpacity);
-        }
-        // Show/hide metro circles
-        if (map.getLayer("metro-circles-layer")) {
-          map.setLayoutProperty(
-            "metro-circles-layer",
-            "visibility",
-            showMetroCircles ? "visible" : "none"
-          );
-        }
-      });
-
-      // Pan/zoom and lock
-      map.flyTo({ center: center, zoom: zoom });
-      setMapLock(map, lockMap);
     }
 
     // --- Streamlit event handler ---
     function onRender(event) {
       const { data } = event.detail.args || {};
+      // Debug overlay update
+      let debugText = '';
       if (data) {
         try {
           const parsed = JSON.parse(data);
-          console.log("Received JSON from Streamlit:", parsed);
+          debugText = `<b>view:</b> ${parsed.view || ''}<br><b>JSON:</b> ${data}`;
           if (parsed.view) {
-            if (map.loaded()) {
-              applyView(parsed.view);
-            } else {
-              map.on("load", () => applyView(parsed.view));
-            }
+            applyView(parsed.view);
           }
         } catch (e) {
-          console.log("Invalid JSON string received from Streamlit:", data);
+          debugText = `<b>Invalid JSON:</b> ${data}`;
         }
+      } else {
+        debugText = '<b>No data received from Streamlit</b>';
       }
+      const debugOverlay = document.getElementById('debug-overlay');
+      debugOverlay.innerHTML = debugText;
+      debugOverlay.style.display = SHOW_DEBUG_OVERLAY ? 'block' : 'none';
     }
 
-    window.addEventListener("streamlit:render", onRender);
+    // Attach our `onRender` handler to Streamlit's render event.
+    /*  if (window.Streamlit) { */
+    Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
+    Streamlit.setComponentReady();
+    Streamlit.setFrameHeight();
+
+    /*    } else {
+         console.log("Streamlit not found, using fallback event listener.");
+         // fallback for dev/test outside Streamlit
+         window.addEventListener("streamlit:render", onRender);
+       } */
   </script>
 </body>
 
