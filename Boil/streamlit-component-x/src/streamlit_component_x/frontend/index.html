@@ -44,6 +44,7 @@
 <body>
   <div id="map"></div>
   <div id="debug-overlay" style="display: none;"></div>
+
   <script>
     // Debug overlay visibility flag
     const SHOW_DEBUG_OVERLAY = false; // Set to true to show debug overlay
@@ -137,10 +138,7 @@
       };
     });
 
-    // Example: log a few states
-    console.log(statesData["California"]);
-    console.log(statesData["Texas"]);
-
+    // --- Blank style for map ---
     const blankStyle = {
       version: 8,
       sources: {},
@@ -150,13 +148,15 @@
     // --- Map creation logic ---
     let map = null;
     let currentStyleType = null; // 'blank' or 'tile'
+    let mapLoaded = false;
 
-    function buildMap(styleType, center, zoom, fillOpacity, showMetroCircles) {
+    function buildMap(styleType, center, zoom) {
       // Remove old map if exists
       if (map) {
         map.remove();
         document.getElementById('map').innerHTML = '';
       }
+      mapLoaded = false;
       const style = styleType === 'blank' ? blankStyle : "https://tiles.openfreemap.org/styles/positron";
       map = new maplibregl.Map({
         container: "map",
@@ -165,96 +165,116 @@
         zoom: zoom,
       });
       map.on("load", function () {
-        // Add states
-        fetch("statesGeo.json")
-          .then((response) => response.json())
-          .then((data) => {
-            data.features.forEach((feature) => {
-              const stateName = feature.properties.NAME;
-              const stateData = statesData[stateName];
-              if (stateData) {
-                feature.properties.fillColor = stateData.fillColor;
-                feature.properties.borderColor = stateData.borderColor;
-                feature.properties.jobNumber = stateData.jobNumber;
-              }
-            });
-            map.addSource("states", {
-              type: "geojson",
-              data: data,
-            });
-            map.addLayer({
-              id: "states-fill",
-              type: "fill",
-              source: "states",
-              paint: {
-                "fill-color": ["get", "fillColor"],
-                "fill-opacity": fillOpacity,
-              },
-            });
-            map.addLayer({
-              id: "states-outline",
-              type: "line",
-              source: "states",
-              paint: {
-                "line-color": ["get", "borderColor"],
-                "line-width": 1,
-                "line-opacity": 1,
-              },
-            });
-          });
-
-        // Helper to scale job count to radius (10-50px)
-        function getCircleRadius(jobs) {
-          const minJobs = 0, maxJobs = 500, minR = 10, maxR = 50;
-          return minR + ((jobs - minJobs) / (maxJobs - minJobs)) * (maxR - minR);
+        mapLoaded = true;
+        // Only add data layers if data is ready
+        if (window.dataReady) {
+          addDataLayers(window.lastFillOpacity, window.lastShowMetroCircles);
         }
+        setMapLock(map, false);
+      });
+    }
 
+    function addDataLayers(fillOpacity, showMetroCircles) {
+      // Remove existing layers/sources if present
+      if (map.getLayer("states-fill")) map.removeLayer("states-fill");
+      if (map.getLayer("states-outline")) map.removeLayer("states-outline");
+      if (map.getSource("states")) map.removeSource("states");
+      if (map.getLayer("metro-circles-layer")) map.removeLayer("metro-circles-layer");
+      if (map.getSource("metro-circles")) map.removeSource("metro-circles");
 
-        const metroGeoJson = {
-          type: "FeatureCollection",
-          features: metroCircles.map((m) => ({
-            type: "Feature",
-            properties: {
-              name: m.name,
-              jobs: m.jobs,
-              radius: getCircleRadius(m.jobs),
+      // Add states
+      fetch("statesGeo.json")
+        .then((response) => response.json())
+        .then((data) => {
+          data.features.forEach((feature) => {
+            const stateName = feature.properties.NAME;
+            const stateData = statesData[stateName];
+            if (stateData) {
+              feature.properties.fillColor = stateData.fillColor;
+              feature.properties.borderColor = stateData.borderColor;
+              feature.properties.jobNumber = stateData.jobNumber;
+            }
+          });
+          map.addSource("states", {
+            type: "geojson",
+            data: data,
+          });
+          map.addLayer({
+            id: "states-fill",
+            type: "fill",
+            source: "states",
+            paint: {
+              "fill-color": ["get", "fillColor"],
+              "fill-opacity": fillOpacity,
             },
-            geometry: {
-              type: "Point",
-              coordinates: m.coords,
+          });
+          map.addLayer({
+            id: "states-outline",
+            type: "line",
+            source: "states",
+            paint: {
+              "line-color": ["get", "borderColor"],
+              "line-width": 1,
+              "line-opacity": fillOpacity === 0 ? 0.2 : 1,
             },
-          })),
-        };
-
-
-
-        // Add metro circles
-        map.addSource("metro-circles", {
-          type: "geojson",
-          data: metroGeoJson,
+          });
         });
-        map.addLayer({
-          id: "metro-circles-layer",
-          type: "circle",
-          source: "metro-circles",
-          paint: {
-            "circle-radius": ["get", "radius"],
-            "circle-color": "#1976d2",
-            "circle-opacity": 0.6,
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#0d47a1",
+
+      // Helper to scale job count to radius (10-50px)
+      function getCircleRadius(jobs) {
+        const minJobs = 0, maxJobs = 500, minR = 10, maxR = 50;
+        return minR + ((jobs - minJobs) / (maxJobs - minJobs)) * (maxR - minR);
+      }
+
+      // Debug: Log metroCircles and generated GeoJSON
+      console.log('metroCircles:', metroCircles);
+      const metroGeoJson = {
+        type: "FeatureCollection",
+        features: metroCircles.map((m) => ({
+          type: "Feature",
+          properties: {
+            name: m.name,
+            jobs: m.jobs,
+            radius: getCircleRadius(m.jobs),
           },
-          layout: {
-            "visibility": showMetroCircles ? "visible" : "none",
+          geometry: {
+            type: "Point",
+            coordinates: m.coords,
           },
-        });
-        // Lock map interactions for all views
-        setMapLock(map, true);
+        })),
+      };
+      console.log('metroGeoJson:', metroGeoJson);
+
+      // Add metro circles
+      map.addSource("metro-circles", {
+        type: "geojson",
+        data: metroGeoJson,
+      });
+      map.addLayer({
+        id: "metro-circles-layer",
+        type: "circle",
+        source: "metro-circles",
+        paint: {
+          "circle-radius": ["get", "radius"],
+          "circle-color": "#1976d2",
+          "circle-opacity": 0.6,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#0d47a1",
+        },
+        layout: {
+          "visibility": showMetroCircles ? "visible" : "none",
+        },
+      });
+      // Log the actual rendered circle features for inspection after map is idle (fully rendered)
+      map.once('idle', () => {
+        const renderedCircles = map.queryRenderedFeatures({ layers: ["metro-circles-layer"] });
+        console.log('Rendered metro circle features (after idle):', renderedCircles);
       });
     }
 
     // --- View logic ---
     function applyView(view) {
+      window.lastView = view;
       let fillOpacity, styleType, showMetroCircles, center, zoom;
       if (view === "country") {
         fillOpacity = 1;
@@ -285,15 +305,18 @@
           zoom = 3;
         }
       }
-      if (currentStyleType !== styleType) {
+      window.lastFillOpacity = fillOpacity;
+      window.lastShowMetroCircles = showMetroCircles;
+      if (currentStyleType !== styleType || !map) {
         currentStyleType = styleType;
-        buildMap(styleType, center, zoom, fillOpacity, showMetroCircles);
+        buildMap(styleType, center, zoom);
       } else {
-        // Just update layers if style type didn't change
+        // Just update view if style type didn't change
         if (map) {
           map.flyTo({ center: center, zoom: zoom });
-          if (map.getLayer("states-fill")) map.setPaintProperty("states-fill", "fill-opacity", fillOpacity);
-          if (map.getLayer("metro-circles-layer")) map.setLayoutProperty("metro-circles-layer", "visibility", showMetroCircles ? "visible" : "none");
+          if (window.dataReady) {
+            addDataLayers(fillOpacity, showMetroCircles);
+          }
         }
       }
     }
@@ -316,23 +339,146 @@
       }
     }
 
-    // Static metro area data for circles
-    const metroCircles = [
-      { name: "New York Metro", coords: [-74.006, 40.7128], jobs: 480 },
-      { name: "Los Angeles Metro", coords: [-118.2437, 34.0522], jobs: 350 },
-      { name: "Chicago Metro", coords: [-87.6298, 41.8781], jobs: 410 },
-      { name: "Dallas Metro", coords: [-96.797, 32.7767], jobs: 220 },
-      { name: "Houston Metro", coords: [-95.3698, 29.7604], jobs: 300 },
-      { name: "Miami Metro", coords: [-80.1918, 25.7617], jobs: 120 },
-      { name: "Atlanta Metro", coords: [-84.388, 33.749], jobs: 60 },
-      { name: "San Francisco Metro", coords: [-122.4194, 37.7749], jobs: 500 },
-      { name: "Seattle Metro", coords: [-122.3321, 47.6062], jobs: 270 },
-      { name: "Denver Metro", coords: [-104.9903, 39.7392], jobs: 10 },
-    ];
+    // --- Metro area data for circles (now dynamic, filled from Supabase) ---
+    let metroCircles = [];
 
     function getMetroByName(name) {
+      // Use the dynamic metroCircles array
       return metroCircles.find((m) => m.name === name);
     }
+
+    // --- Supabase data integration ---
+    function processSupabaseData(supabaseData) {
+      // Build lookup for incoming data
+      const stateJobMap = {};
+      const metroJobMap = {};
+      const incomingStates = new Set();
+      const incomingMetros = new Set();
+
+      supabaseData.forEach((item) => {
+        if (item.state === "United States") {
+          // Ignore for now
+          return;
+        }
+        // Metro area detection: ends with "Metropolitan Area" or "Area"
+        if (/Metropolitan Area$| Area$/.test(item.state)) {
+          metroJobMap[item.state] = item.job_count;
+          incomingMetros.add(item.state);
+        } else if (/^[A-Z]{2}$/.test(item.state) || stateNames.includes(item.state)) {
+          // State: 2-letter code or in stateNames
+          stateJobMap[item.state] = item.job_count;
+          incomingStates.add(item.state);
+        } else {
+          // Could be a state name (e.g., "California")
+          stateJobMap[item.state] = item.job_count;
+          incomingStates.add(item.state);
+        }
+      });
+
+      // Map state codes to full names if needed
+      const stateCodeToName = {
+        "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming", "DC": "District of Columbia"
+      };
+
+      // Update statesData
+      const missingStates = [];
+      const extraStates = [];
+      stateNames.forEach((name) => {
+        // Try to find by full name or code
+        let code = Object.keys(stateCodeToName).find(k => stateCodeToName[k] === name);
+        let jobNumber = 0;
+        if (stateJobMap[name] !== undefined) {
+          jobNumber = stateJobMap[name];
+        } else if (code && stateJobMap[code] !== undefined) {
+          jobNumber = stateJobMap[code];
+        } else {
+          missingStates.push(name);
+        }
+        statesData[name] = {
+          Label: name,
+          borderColor: "#000000",
+          fillColor: getColorForJobNumber(jobNumber),
+          jobNumber: jobNumber,
+        };
+      });
+      // Find extra states in data not in our list
+      Object.keys(stateJobMap).forEach((k) => {
+        let fullName = stateCodeToName[k] || k;
+        if (!stateNames.includes(fullName)) {
+          extraStates.push(k);
+        }
+      });
+
+      // --- Metro areas ---
+      // Only use metros from incoming data, add new ones if needed
+      const newMetroCircles = [];
+      Object.keys(metroJobMap).forEach((metroName) => {
+        // Use Supabase names as source of truth, fallback to known coords if not present
+        let coords = metroFallbackCoords[metroName] || [0, 0];
+        newMetroCircles.push({ name: metroName, coords: coords, jobs: metroJobMap[metroName] });
+      });
+      // Replace global metroCircles
+      metroCircles = newMetroCircles;
+      window.metroCircles = metroCircles;
+      window.dataReady = true;
+      // Do NOT call addDataLayers here!
+      // Only trigger view update
+      if (window.lastView) {
+        applyView(window.lastView);
+      } else {
+        applyView('country-metro'); // default to show metros
+      }
+
+      // Log mismatches
+      if (missingStates.length > 0) {
+        console.warn("States in code but not in data (set to 0):", missingStates);
+      }
+      if (extraStates.length > 0) {
+        console.warn("States in data but not in code:", extraStates);
+      }
+      // Log new metros
+      const newMetros = Object.keys(metroJobMap).filter(m => !metroCircles.some(mc => mc.name === m));
+      if (newMetros.length > 0) {
+        console.info("New metro areas added:", newMetros);
+      }
+    }
+
+    // Fallback coordinates for known metro areas
+    const metroFallbackCoords = {
+      "Texas Metropolitan Area": [-97.7431, 30.2672], // Austin, TX
+      "Oregon Metropolitan Area": [-122.6765, 45.5231], // Portland, OR
+      "South Carolina Area": [-81.0348, 34.0007], // Columbia, SC
+      "Ohio Metropolitan Area": [-83.0007, 39.9612], // Columbus, OH
+      "South Carolina Metropolitan Area": [-80.8373, 34.0007], // Columbia, SC
+      "Wisconsin Metropolitan Area": [-87.9065, 43.0389], // Milwaukee, WI
+      "Alabama Area": [-86.8025, 33.5207], // Birmingham, AL
+      "New York Metropolitan Area": [-74.0060, 40.7128], // New York City, NY
+    };
+
+    (async () => {
+      const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm');
+      const supabaseUrl = 'https://zmotgzgxqonyjscjgiwg.supabase.co';
+      const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inptb3Rnemd4cW9ueWpzY2pnaXdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA4OTUzMDQsImV4cCI6MjA1NjQ3MTMwNH0._haW8q6MQyj3C-xX6JdHTKrtgL7rUQkbjUgzblk14H8';
+      window.supabase = createClient(supabaseUrl, supabaseKey);
+      await fetchAndProcessJobs();
+    })();
+
+    // --- Fetch and process Supabase data ---
+    async function fetchAndProcessJobs() {
+      const { data, error } = await window.supabase
+        .from('jobs_by_state_clean')
+        .select('state,job_count');
+      if (error) {
+        console.error('Supabase error:', error);
+      } else {
+        console.log('Supabase jobs_by_state_clean:', data);
+        processSupabaseData(data);
+      }
+    }
+
+    /*     // Example: log a few states
+        console.log(statesData["California"]);
+        console.log(statesData["Texas"]); */
 
     // --- Streamlit event handler ---
     function onRender(event) {

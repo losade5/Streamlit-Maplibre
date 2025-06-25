@@ -34,19 +34,18 @@ def main():
     st.write("## Jobs map")
     # Example JSON string with a "view" field.
     # Valid values for "view":
-    #   "country"           - Shows the whole country view
-    #   "country-metro"     - Shows all metros, but pans/zooms/locks to the whole country
-    #   "New York Metro"    - pans/zooms/locks to New York Metro
-    #   "Los Angeles Metro" - pans/zooms/locks to Los Angeles Metro
-    #   "Chicago Metro"     - pans/zooms/locks to Chicago Metro
-    #   "Dallas Metro"      - pans/zooms/locks to Dallas Metro
-    #   "Houston Metro"     - pans/zooms/locks to Houston Metro
-    #   "Miami Metro"       - pans/zooms/locks to Miami Metro
-    #   "Atlanta Metro"     - pans/zooms/locks to Atlanta Metro
-    #   "San Francisco Metro" - pans/zooms/locks to San Francisco Metro
-    #   "Seattle Metro"     - pans/zooms/locks to Seattle Metro
-    #   "Denver Metro"      - pans/zooms/locks to Denver Metro
-    json_str = '{"view": "New York Metro"}'
+    #   "country"                - Shows the whole country view
+    #   "country-metro"          - Shows all metros, but pans/zooms/locks to the whole country
+    #   "Texas Metropolitan Area"
+    #   "Oregon Metropolitan Area"
+    #   "South Carolina Area"
+    #   "Ohio Metropolitan Area"
+    #   "South Carolina Metropolitan Area"
+    #   "Wisconsin Metropolitan Area"
+    #   "Alabama Area"
+    #   "New York Metropolitan Area"
+    #   (plus any other metro area present in the data)
+    json_str = '{"view": "country-metro"}'
     value = streamlit_component_x(data=json_str)
     st.write(value)
 
