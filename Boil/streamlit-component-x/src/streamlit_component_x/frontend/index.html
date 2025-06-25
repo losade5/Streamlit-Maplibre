@@ -15,10 +15,22 @@
 
   <style>
     #map {
-      width: 700px;
-      height: 800px;
-
+      width: 100%;
+      height: 500px !important;
+      margin: 0 auto;
       box-sizing: border-box;
+    }
+
+    @media (max-width: 600px) {
+      #map {
+        max-width: 390px !important;
+      }
+    }
+
+    @media (min-width: 601px) {
+      #map {
+        max-width: 700px !important;
+      }
     }
 
     #debug-overlay {
@@ -184,7 +196,7 @@
         if (window.dataReady) {
           addDataLayers(window.lastFillOpacity, window.lastShowMetroCircles);
         }
-        setMapLock(map, false);
+        setMapLock(map, true);
       });
     }
 
