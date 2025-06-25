@@ -38,12 +38,26 @@
       text-align: center;
       box-shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
     }
+
+    #custom-tooltip {
+      display: none;
+      position: absolute;
+      pointer-events: none;
+      z-index: 2000;
+      background: rgba(30, 30, 30, 0.95);
+      color: #fff;
+      padding: 8px 14px;
+      border-radius: 7px;
+      font-size: 16px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+    }
   </style>
 </head>
 
 <body>
   <div id="map"></div>
   <div id="debug-overlay" style="display: none;"></div>
+  <div id="custom-tooltip" style="display:none; position:absolute; pointer-events:none; z-index:2000; background:rgba(30,30,30,0.95); color:#fff; padding:8px 14px; border-radius:7px; font-size:16px; box-shadow:0 2px 12px rgba(0,0,0,0.25);"></div>
 
   <script>
     // Debug overlay visibility flag
@@ -270,6 +284,132 @@
         const renderedCircles = map.queryRenderedFeatures({ layers: ["metro-circles-layer"] });
         console.log('Rendered metro circle features (after idle):', renderedCircles);
       });
+
+      // --- Custom tooltip logic ---
+      const tooltip = document.getElementById('custom-tooltip');
+      let tooltipLocked = false;
+      let lastTooltipLayer = null;
+      let lastTooltipFeatureId = null;
+
+      // Helper to show tooltip
+      function showTooltip(e, html) {
+        tooltip.innerHTML = html;
+        tooltip.style.display = 'block';
+        // Position tooltip near mouse/tap, but not offscreen
+        const mapRect = map.getContainer().getBoundingClientRect();
+        let x, y;
+        if (e.originalEvent.touches && e.originalEvent.touches.length > 0) {
+          x = e.originalEvent.touches[0].clientX - mapRect.left + 10;
+          y = e.originalEvent.touches[0].clientY - mapRect.top + 10;
+        } else {
+          x = e.originalEvent.clientX - mapRect.left + 10;
+          y = e.originalEvent.clientY - mapRect.top + 10;
+        }
+        x = Math.min(x, mapRect.width - 180);
+        y = Math.min(y, mapRect.height - 60);
+        tooltip.style.left = x + 'px';
+        tooltip.style.top = y + 'px';
+      }
+      function hideTooltip() {
+        tooltip.style.display = 'none';
+        tooltipLocked = false;
+        lastTooltipLayer = null;
+        lastTooltipFeatureId = null;
+      }
+
+      // Hide tooltip on map click if not on a feature
+      map.on('click', function(e) {
+        if (!tooltipLocked) return;
+        // If click is not on a feature, hide
+        hideTooltip();
+      });
+
+      // --- Metro circles tooltip (hover and tap) ---
+      map.on('mousemove', 'metro-circles-layer', function(e) {
+        if (tooltipLocked) return;
+        if (e.features && e.features.length > 0) {
+          const f = e.features[0];
+          const name = f.properties.name;
+          const jobs = f.properties.jobs;
+          showTooltip(e, `<b>${name}</b><br>Jobs: ${jobs}`);
+          map.getCanvas().style.cursor = 'pointer';
+          lastTooltipLayer = 'metro-circles-layer';
+          lastTooltipFeatureId = f.id;
+        }
+      });
+      map.on('mouseleave', 'metro-circles-layer', function() {
+        if (!tooltipLocked) hideTooltip();
+        map.getCanvas().style.cursor = '';
+      });
+      map.on('click', 'metro-circles-layer', function(e) {
+        if (e.features && e.features.length > 0) {
+          const f = e.features[0];
+          const name = f.properties.name;
+          const jobs = f.properties.jobs;
+          showTooltip(e, `<b>${name}</b><br>Jobs: ${jobs}`);
+          tooltipLocked = true;
+          lastTooltipLayer = 'metro-circles-layer';
+          lastTooltipFeatureId = f.id;
+          e.originalEvent.stopPropagation();
+        }
+      });
+      map.on('touchstart', 'metro-circles-layer', function(e) {
+        if (e.features && e.features.length > 0) {
+          const f = e.features[0];
+          const name = f.properties.name;
+          const jobs = f.properties.jobs;
+          showTooltip(e, `<b>${name}</b><br>Jobs: ${jobs}`);
+          tooltipLocked = true;
+          lastTooltipLayer = 'metro-circles-layer';
+          lastTooltipFeatureId = f.id;
+          e.originalEvent.stopPropagation();
+        }
+      });
+
+      // --- States tooltip (only in 'country' view) ---
+      const view = (window.lastView && typeof window.lastView === 'string') ? window.lastView : '';
+      if (view === 'country') {
+        map.on('mousemove', 'states-fill', function(e) {
+          if (tooltipLocked) return;
+          if (e.features && e.features.length > 0) {
+            const f = e.features[0];
+            const name = f.properties.NAME || f.properties.Label;
+            const jobs = f.properties.jobNumber;
+            showTooltip(e, `<b>${name}</b><br>Jobs: ${jobs}`);
+            map.getCanvas().style.cursor = 'pointer';
+            lastTooltipLayer = 'states-fill';
+            lastTooltipFeatureId = f.id;
+          }
+        });
+        map.on('mouseleave', 'states-fill', function() {
+          if (!tooltipLocked) hideTooltip();
+          map.getCanvas().style.cursor = '';
+        });
+        map.on('click', 'states-fill', function(e) {
+          if (e.features && e.features.length > 0) {
+            const f = e.features[0];
+            const name = f.properties.NAME || f.properties.Label;
+            const jobs = f.properties.jobNumber;
+            showTooltip(e, `<b>${name}</b><br>Jobs: ${jobs}`);
+            tooltipLocked = true;
+            lastTooltipLayer = 'states-fill';
+            lastTooltipFeatureId = f.id;
+            e.originalEvent.stopPropagation();
+          }
+        });
+        map.on('touchstart', 'states-fill', function(e) {
+          if (e.features && e.features.length > 0) {
+            const f = e.features[0];
+            const name = f.properties.NAME || f.properties.Label;
+            const jobs = f.properties.jobNumber;
+            showTooltip(e, `<b>${name}</b><br>Jobs: ${jobs}`);
+            tooltipLocked = true;
+            lastTooltipLayer = 'states-fill';
+            lastTooltipFeatureId = f.id;
+            e.originalEvent.stopPropagation();
+          }
+        });
+      }
     }
 
     // --- View logic ---
