@@ -236,7 +236,12 @@
 
       // Helper to scale job count to radius (10-50px)
       function getCircleRadius(jobs) {
-        const minJobs = 0, maxJobs = 500, minR = 10, maxR = 50;
+        const minJobs = 0;
+        // Dynamically determine maxJobs from current metroCircles
+        const maxJobs = metroCircles.length > 0 ? Math.max(...metroCircles.map(m => m.jobs)) : 1;
+        const minR = 15, maxR = 50;
+        // Avoid division by zero
+        if (maxJobs === minJobs) return minR;
         return minR + ((jobs - minJobs) / (maxJobs - minJobs)) * (maxR - minR);
       }
 
