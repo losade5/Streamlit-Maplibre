@@ -45,7 +45,7 @@ def main():
     #   "Alabama Area"
     #   "New York Metropolitan Area"
     #   (plus any other metro area present in the data)
-    json_str = '{"view": "country"}'
+    json_str = '{"view": "country-metro"}'
     value = streamlit_component_x(data=json_str)
     st.write(value)
 
